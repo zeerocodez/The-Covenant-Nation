@@ -1,0 +1,6 @@
+{
+  "name": "Children's Church Attendance & Security System",
+  "description": "Children and youth church attendance, check-in, multiple services, department management, and security checkout system for The Covenant Nation Uyo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
