@@ -41,6 +41,12 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [reportFeedback, setReportFeedback] = useState<string | null>(null);
+
+  const showReportFeedback = (msg: string) => {
+    setReportFeedback(msg);
+    setTimeout(() => setReportFeedback(null), 3500);
+  };
 
   const filteredRecords = attendance.filter((rec) => {
     const matchesService = selectedServiceId === 'all' || rec.serviceId === selectedServiceId;
@@ -62,7 +68,7 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({
 
   const handleExportCSV = () => {
     if (filteredRecords.length === 0) {
-      alert('No records to export with the current filters.');
+      showReportFeedback('ℹ No records found to export with the current filter settings.');
       return;
     }
 
@@ -153,6 +159,13 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({
           </button>
         </div>
       </div>
+
+      {reportFeedback && (
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-blue-50 border border-blue-300 text-blue-900 text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-xs animate-in fade-in">
+          <CheckCircle2 className="w-5 h-5 text-blue-600 shrink-0" />
+          <span>{reportFeedback}</span>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

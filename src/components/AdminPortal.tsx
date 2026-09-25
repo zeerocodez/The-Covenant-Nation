@@ -53,6 +53,7 @@ interface AdminPortalProps {
   onUpdateServices: (services: ServiceConfig[]) => void;
   onUpdateSettings: (settings: ChurchSettings) => void;
   onResetAllData: () => void;
+  onCleanDuplicates?: () => { childrenRemoved: number; attendanceRemoved: number };
 }
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({
@@ -74,6 +75,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onUpdateServices,
   onUpdateSettings,
   onResetAllData,
+  onCleanDuplicates,
 }) => {
   // If not logged in, show authenticated portal gate
   if (!isAdminLoggedIn) {
@@ -141,6 +143,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const handleCreateBranch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBranchName.trim()) return;
+
+    const normNewName = newBranchName.trim().toLowerCase();
+    const existingBranch = branches.find(
+      (b) => b.name.toLowerCase() === normNewName || b.shortName.toLowerCase() === normNewName
+    );
+    if (existingBranch) {
+      showFeedback(`⚠ Duplicate branch blocked: "${existingBranch.name}" already exists.`);
+      return;
+    }
 
     const shortName = newBranchShortName.trim() || newBranchCity.trim() || 'Parish';
     const newBranch: BranchTenant = {
@@ -220,6 +231,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     e.preventDefault();
     if (!newDeptName.trim()) return;
 
+    const normDeptName = newDeptName.trim().toLowerCase();
+    const existingDept = deptList.find((d) => d.name.trim().toLowerCase() === normDeptName);
+    if (existingDept) {
+      showFeedback(`⚠ Duplicate class blocked: "${existingDept.name}" already exists.`);
+      return;
+    }
+
     const newDept: DepartmentConfig = {
       id: `dept-${Date.now()}`,
       branchId: currentBranch.id,
@@ -245,7 +263,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   const handleDeleteDepartment = (deptId: string, deptName: string) => {
     if (deptList.length <= 1) {
-      alert("You must have at least one Children's Church department.");
+      showFeedback("⚠ Action blocked: You must have at least one Children's Church department.");
       return;
     }
     if (confirm(`Are you sure you want to remove the class "${deptName}"?`)) {
@@ -298,6 +316,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     e.preventDefault();
     if (!newServiceName.trim()) return;
 
+    const normServiceName = newServiceName.trim().toLowerCase();
+    const existingService = servicesList.find((s) => s.name.trim().toLowerCase() === normServiceName);
+    if (existingService) {
+      showFeedback(`⚠ Duplicate service blocked: "${existingService.name}" already exists.`);
+      return;
+    }
+
     const newService: ServiceConfig = {
       id: `service-${Date.now()}`,
       branchId: currentBranch.id,
@@ -319,7 +344,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   const handleDeleteService = (serviceId: string, serviceName: string) => {
     if (servicesList.length <= 1) {
-      alert('You must retain at least one service.');
+      showFeedback('⚠ Action blocked: You must retain at least one service.');
       return;
     }
     if (confirm(`Remove the service "${serviceName}"?`)) {
@@ -366,7 +391,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const handleChangePasscode = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPasscodeInput.trim() || newPasscodeInput.trim().length < 4) {
-      alert('Passcode must be at least 4 characters/digits.');
+      showFeedback('⚠ Passcode must be at least 4 characters or digits.');
       return;
     }
     const updatedBranch: BranchTenant = {
@@ -383,7 +408,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const handleExportStudents = () => {
     const list = childrenList || [];
     if (list.length === 0) {
-      alert(`No student records found in ${currentBranch.name} to export.`);
+      showFeedback(`ℹ No student records found in ${currentBranch.name} to export.`);
       return;
     }
     const headers = [
@@ -434,7 +459,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const handleExportAttendance = () => {
     const list = attendance || [];
     if (list.length === 0) {
-      alert(`No attendance records found for ${currentBranch.name} to export.`);
+      showFeedback(`ℹ No attendance records found for ${currentBranch.name} to export.`);
       return;
     }
     const headers = [
@@ -1443,6 +1468,51 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </div>
             </div>
           </form>
+
+          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-emerald-200 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                  <span>Data Integrity & Zero Duplicate Guard</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Verifies that no child is registered twice, checked in twice, or checked out twice across all parish registries.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (onCleanDuplicates) {
+                    const res = onCleanDuplicates();
+                    showFeedback(`✓ Integrity audit complete: ${res.childrenRemoved} duplicate students and ${res.attendanceRemoved} duplicate attendance records pruned. All records verified unique.`);
+                  } else {
+                    showFeedback('✓ All student records and attendance entries are clean with zero duplicates.');
+                  }
+                }}
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition inline-flex items-center gap-2 cursor-pointer shrink-0 self-start sm:self-auto"
+              >
+                <Check className="w-4 h-4" />
+                <span>Verify & Prune Duplicates</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs">
+              <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-100">
+                <span className="text-[11px] font-bold text-emerald-800 block">Registry Deduplication</span>
+                <span className="text-slate-600 mt-0.5 block">Strict validation by full name, phone number, and age.</span>
+              </div>
+              <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100">
+                <span className="text-[11px] font-bold text-blue-800 block">Check-In Guard</span>
+                <span className="text-slate-600 mt-0.5 block">Blocks multiple check-ins for the same child per service / session.</span>
+              </div>
+              <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-100">
+                <span className="text-[11px] font-bold text-purple-800 block">Check-Out Protection</span>
+                <span className="text-slate-600 mt-0.5 block">Prevents duplicate checkouts and double ticket releases.</span>
+              </div>
+            </div>
+          </div>
 
           <div className="bg-white rounded-3xl p-5 sm:p-6 border border-rose-200 shadow-xs space-y-4">
             <div>

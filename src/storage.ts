@@ -45,6 +45,74 @@ function safeSetItem<T>(key: string, value: T): void {
 }
 
 export const StorageService = {
+  // Helper to normalize strings for comparison
+  normalize(str: string): string {
+    return (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  },
+
+  // Deduplicate children list by ID, name+phone, and name+age
+  deduplicateChildren(children: Child[]): Child[] {
+    if (!children || !Array.isArray(children)) return [];
+    const seenIds = new Set<string>();
+    const seenSigs = new Set<string>();
+    const result: Child[] = [];
+
+    for (const c of children) {
+      if (!c || !c.fullName) continue;
+      // 1. Check duplicate ID
+      if (c.id && seenIds.has(c.id)) {
+        continue;
+      }
+
+      const normName = this.normalize(c.fullName);
+      const phoneDigits = (c.parentPhone || '').replace(/\D/g, '');
+      const sigPhone = phoneDigits.length >= 6 ? `${normName}||phone:${phoneDigits.slice(-10)}` : null;
+      const sigAge = `${normName}||age:${c.age}`;
+
+      // 2. Check duplicate identity
+      if ((sigPhone && seenSigs.has(sigPhone)) || seenSigs.has(sigAge)) {
+        continue; // duplicate child record, skip
+      }
+
+      if (c.id) seenIds.add(c.id);
+      if (sigPhone) seenSigs.add(sigPhone);
+      seenSigs.add(sigAge);
+      result.push(c);
+    }
+    return result;
+  },
+
+  // Deduplicate attendance records (no child registered or checked in/out twice for same service/date)
+  deduplicateAttendance(records: AttendanceRecord[]): AttendanceRecord[] {
+    if (!records || !Array.isArray(records)) return [];
+    const seenIds = new Set<string>();
+    // Key by (childId || normName) + date + serviceId
+    const map = new Map<string, AttendanceRecord>();
+
+    for (const r of records) {
+      if (!r || !r.date) continue;
+      if (r.id && seenIds.has(r.id)) continue;
+      if (r.id) seenIds.add(r.id);
+
+      const normName = this.normalize(r.childName || '');
+      const childKey = r.childId ? `id:${r.childId}` : `name:${normName}`;
+      const compositeKey = `${r.branchId || 'default'}__${r.date}__${r.serviceId}__${childKey}`;
+
+      if (map.has(compositeKey)) {
+        const existing = map.get(compositeKey)!;
+        // If one is checked_out and the other is checked_in, keep the checked_out one
+        if (existing.status !== 'checked_out' && r.status === 'checked_out') {
+          map.set(compositeKey, r);
+        }
+        // Otherwise keep the earlier or more complete record
+      } else {
+        map.set(compositeKey, r);
+      }
+    }
+
+    return Array.from(map.values());
+  },
+
   // ==================== BRANCH TENANTS ====================
   getBranches(): BranchTenant[] {
     const branches = safeGetItem<BranchTenant[]>(KEYS.BRANCHES, DEFAULT_BRANCHES);
@@ -117,26 +185,69 @@ export const StorageService = {
   getChildren(branchId?: string): Child[] {
     const bId = branchId || this.getActiveBranchId();
     const key = `${KEYS.CHILDREN_PREFIX}${bId}`;
-    return safeGetItem<Child[]>(key, SEED_CHILDREN);
+    const raw = safeGetItem<Child[]>(key, SEED_CHILDREN);
+    const deduped = this.deduplicateChildren(raw);
+    if (raw && deduped.length !== raw.length) {
+      safeSetItem(key, deduped);
+    }
+    return deduped;
   },
 
   saveChildren(children: Child[], branchId?: string): void {
     const bId = branchId || this.getActiveBranchId();
     const key = `${KEYS.CHILDREN_PREFIX}${bId}`;
-    safeSetItem(key, children);
+    const deduped = this.deduplicateChildren(children);
+    safeSetItem(key, deduped);
   },
 
   // ==================== ATTENDANCE RECORDS (PER TENANT) ====================
   getAttendance(branchId?: string): AttendanceRecord[] {
     const bId = branchId || this.getActiveBranchId();
     const key = `${KEYS.ATTENDANCE_PREFIX}${bId}`;
-    return safeGetItem<AttendanceRecord[]>(key, SEED_ATTENDANCE);
+    const raw = safeGetItem<AttendanceRecord[]>(key, SEED_ATTENDANCE);
+    const deduped = this.deduplicateAttendance(raw);
+    if (raw && deduped.length !== raw.length) {
+      safeSetItem(key, deduped);
+    }
+    return deduped;
   },
 
   saveAttendance(records: AttendanceRecord[], branchId?: string): void {
     const bId = branchId || this.getActiveBranchId();
     const key = `${KEYS.ATTENDANCE_PREFIX}${bId}`;
-    safeSetItem(key, records);
+    const deduped = this.deduplicateAttendance(records);
+    safeSetItem(key, deduped);
+  },
+
+  // Scan and clean all duplicates across all branches
+  cleanAllDuplicates(): { childrenRemoved: number; attendanceRemoved: number } {
+    let childrenRemoved = 0;
+    let attendanceRemoved = 0;
+    const branches = this.getBranches();
+
+    for (const b of branches) {
+      const cKey = `${KEYS.CHILDREN_PREFIX}${b.id}`;
+      const rawC = safeGetItem<Child[]>(cKey, []);
+      if (rawC && rawC.length > 0) {
+        const cleanC = this.deduplicateChildren(rawC);
+        if (cleanC.length < rawC.length) {
+          childrenRemoved += rawC.length - cleanC.length;
+          safeSetItem(cKey, cleanC);
+        }
+      }
+
+      const aKey = `${KEYS.ATTENDANCE_PREFIX}${b.id}`;
+      const rawA = safeGetItem<AttendanceRecord[]>(aKey, []);
+      if (rawA && rawA.length > 0) {
+        const cleanA = this.deduplicateAttendance(rawA);
+        if (cleanA.length < rawA.length) {
+          attendanceRemoved += rawA.length - cleanA.length;
+          safeSetItem(aKey, cleanA);
+        }
+      }
+    }
+
+    return { childrenRemoved, attendanceRemoved };
   },
 
   // ==================== ACTIVE SERVICE ID (PER TENANT) ====================

@@ -38,6 +38,8 @@ export const CheckOutDesk: React.FC<CheckOutDeskProps> = ({
   const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
   const [alreadyCheckedOutWarning, setAlreadyCheckedOutWarning] = useState<AttendanceRecord | null>(null);
   const [checkoutSuccessMessage, setCheckoutSuccessMessage] = useState<string | null>(null);
+  const [checkoutErrorMessage, setCheckoutErrorMessage] = useState<string | null>(null);
+  const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
 
   const todayStr = getTodayDateString();
 
@@ -52,6 +54,7 @@ export const CheckOutDesk: React.FC<CheckOutDeskProps> = ({
 
   const handleSearchCode = (val: string) => {
     setCodeInput(val);
+    setCheckoutErrorMessage(null);
     const cleaned = val.trim().toLowerCase();
     if (!cleaned) {
       setSelectedRecord(null);
@@ -85,6 +88,12 @@ export const CheckOutDesk: React.FC<CheckOutDeskProps> = ({
   };
 
   const handleSelectChildDirectly = (rec: AttendanceRecord) => {
+    setCheckoutErrorMessage(null);
+    if (rec.status === 'checked_out') {
+      setAlreadyCheckedOutWarning(rec);
+      setSelectedRecord(null);
+      return;
+    }
     setSelectedRecord(rec);
     setCodeInput(rec.pickupSecurityCode);
     setAuthorizedPerson(rec.parentName);
@@ -93,13 +102,15 @@ export const CheckOutDesk: React.FC<CheckOutDeskProps> = ({
 
   const handleConfirmCheckout = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRecord) return;
+    if (!selectedRecord || isProcessingCheckout) return;
+
     if (selectedRecord.status === 'checked_out') {
-      alert(`Duplicate checkout blocked: ${selectedRecord.childName} has already been checked out.`);
+      setCheckoutErrorMessage(`Duplicate checkout blocked: ${selectedRecord.childName} has already been checked out today.`);
       setSelectedRecord(null);
       return;
     }
 
+    setIsProcessingCheckout(true);
     onCheckOutRecord(selectedRecord.id, authorizedPerson || selectedRecord.parentName);
     setCheckoutSuccessMessage(
       `✓ Successfully checked out ${selectedRecord.childName}. Child released to ${
@@ -110,6 +121,7 @@ export const CheckOutDesk: React.FC<CheckOutDeskProps> = ({
     setAlreadyCheckedOutWarning(null);
     setCodeInput('');
     setAuthorizedPerson('');
+    setIsProcessingCheckout(false);
 
     setTimeout(() => {
       setCheckoutSuccessMessage(null);
@@ -159,6 +171,13 @@ export const CheckOutDesk: React.FC<CheckOutDeskProps> = ({
         <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-sm font-semibold flex items-center gap-2 shadow-xs animate-in fade-in">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
           <span>{checkoutSuccessMessage}</span>
+        </div>
+      )}
+
+      {checkoutErrorMessage && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-sm font-semibold flex items-center gap-2 shadow-xs animate-in fade-in">
+          <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
+          <span>{checkoutErrorMessage}</span>
         </div>
       )}
 

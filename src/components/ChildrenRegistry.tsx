@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Child, DepartmentConfig, ServiceConfig, ChurchSettings } from '../types';
+import { Child, DepartmentConfig, ServiceConfig, ChurchSettings, AttendanceRecord } from '../types';
 import {
   Users,
   Search,
@@ -15,33 +15,52 @@ import {
   Heart,
   X,
   UserCheck,
+  CheckCircle2,
+  Printer,
+  ShieldCheck,
 } from 'lucide-react';
 import { getTodayDateString } from '../mockData';
 
 interface ChildrenRegistryProps {
   childrenList: Child[];
+  attendance?: AttendanceRecord[];
   departments: DepartmentConfig[];
   services: ServiceConfig[];
   activeServiceId: string;
   onSaveChild: (child: Child) => void;
   onDeleteChild: (childId: string) => void;
   onCheckInChild: (child: Child) => void;
+  onViewSlip?: (record: AttendanceRecord) => void;
 }
 
 export const ChildrenRegistry: React.FC<ChildrenRegistryProps> = ({
   childrenList,
+  attendance = [],
   departments,
   services,
   activeServiceId,
   onSaveChild,
   onDeleteChild,
   onCheckInChild,
+  onViewSlip,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDeptId, setSelectedDeptId] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingChild, setEditingChild] = useState<Child | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const todayStr = getTodayDateString();
+  const activeService = services.find((s) => s.id === activeServiceId) || services[0];
+
+  // Helper map for today's active service attendance
+  const todayAttendanceMap = new Map<string, AttendanceRecord>();
+  attendance
+    .filter((a) => a.date === todayStr && a.serviceId === activeServiceId)
+    .forEach((rec) => {
+      todayAttendanceMap.set(rec.childId, rec);
+    });
 
   // Form State
   const [fullName, setFullName] = useState('');
@@ -63,6 +82,7 @@ export const ChildrenRegistry: React.FC<ChildrenRegistryProps> = ({
   const resetForm = () => {
     setEditingChild(null);
     setFormError(null);
+    setIsSubmitting(false);
     setFullName('');
     setDateOfBirth('');
     setAge(5);
@@ -126,28 +146,42 @@ export const ChildrenRegistry: React.FC<ChildrenRegistryProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setFormError(null);
 
-    const normName = fullName.trim().toLowerCase();
-    const normPhone = parentPhone.trim().replace(/\D/g, '');
+    const cleanStr = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cleanDigits = (s: string) => (s || '').replace(/\D/g, '');
 
-    // Duplicate check: check if another child is already registered with matching name and parent phone/age
+    const normName = cleanStr(fullName);
+    const normPhone = cleanDigits(parentPhone);
+
+    if (!normName) {
+      setFormError("Please enter the child's name.");
+      return;
+    }
+
+    // Duplicate check: check if another child is already registered with matching name and parent phone/age/parent name
     const duplicate = childrenList.find((c) => {
       if (editingChild && c.id === editingChild.id) return false;
-      const sameName = c.fullName.trim().toLowerCase() === normName;
-      const samePhone = normPhone && c.parentPhone.replace(/\D/g, '') === normPhone;
-      return sameName && (samePhone || c.age === Number(age));
+      const sameName = cleanStr(c.fullName) === normName;
+      const cPhone = cleanDigits(c.parentPhone);
+      const samePhone = normPhone.length >= 6 && cPhone.length >= 6 && (normPhone.slice(-10) === cPhone.slice(-10) || normPhone === cPhone);
+      const sameAge = Number(c.age) === Number(age);
+      const sameParent = cleanStr(c.parentName) === cleanStr(parentName);
+      return sameName && (samePhone || sameAge || sameParent);
     });
 
     if (duplicate) {
       const dept = departments.find((d) => d.id === duplicate.departmentId);
       setFormError(
-        `Duplicate entry blocked: "${fullName.trim()}" is already registered in ${
+        `Duplicate registration blocked: "${fullName.trim()}" is already registered in ${
           dept?.name || 'this parish'
         } (Parent: ${duplicate.parentName}, Phone: ${duplicate.parentPhone}). A child cannot be registered twice.`
       );
       return;
     }
+
+    setIsSubmitting(true);
 
     const colors = [
       'bg-blue-600',
@@ -384,14 +418,61 @@ export const ChildrenRegistry: React.FC<ChildrenRegistryProps> = ({
               </div>
 
               <div className="mt-4 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => onCheckInChild(child)}
-                  className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-semibold text-xs transition flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <UserCheck className="w-3.5 h-3.5" />
-                  <span>Quick Check-In</span>
-                </button>
+                {(() => {
+                  const rec = todayAttendanceMap.get(child.id);
+                  if (rec && rec.status === 'checked_in') {
+                    return (
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 bg-emerald-50 border border-emerald-200 rounded-xl px-2.5 py-1 text-center">
+                          <span className="text-[10px] font-bold text-emerald-700 uppercase block">Checked In</span>
+                          <span className="font-mono text-xs font-black text-emerald-900">{rec.pickupSecurityCode}</span>
+                        </div>
+                        {onViewSlip && (
+                          <button
+                            type="button"
+                            onClick={() => onViewSlip(rec)}
+                            className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                            title="Print / View Parent Security Slip"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>Slip</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  }
+                  if (rec && rec.status === 'checked_out') {
+                    return (
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-1 text-center">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase block">Checked Out</span>
+                          <span className="text-xs font-semibold text-slate-700 truncate block">Released ({rec.checkOutTime || 'Today'})</span>
+                        </div>
+                        {onViewSlip && (
+                          <button
+                            type="button"
+                            onClick={() => onViewSlip(rec)}
+                            className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                            title="View attendance record"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>Record</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  }
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => onCheckInChild(child)}
+                      className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-semibold text-xs transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>Quick Check-In</span>
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           );

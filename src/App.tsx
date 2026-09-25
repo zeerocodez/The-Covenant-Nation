@@ -154,25 +154,44 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Check-In Child Handler (No child can be checked in twice)
+  // Check-In Child Handler (Strict: No child can be checked in twice)
   const handleCheckInChild = (child: Child) => {
     const todayStr = getTodayDateString();
     const activeService = services.find((s) => s.id === activeServiceId) || services[0];
     const dept = departments.find((d) => d.id === child.departmentId) || departments[0];
+    const normName = StorageService.normalize(child.fullName);
 
-    // Check if already checked in or checked out today for this service
-    const existing = attendance.find(
-      (a) => a.childId === child.id && a.date === todayStr && a.serviceId === activeService?.id
+    // 1. Check if child is currently checked in anywhere today (cannot be in two services at once)
+    const currentlyInClass = attendance.find(
+      (a) =>
+        (a.childId === child.id || StorageService.normalize(a.childName) === normName) &&
+        a.date === todayStr &&
+        a.status === 'checked_in'
     );
 
-    if (existing) {
-      setSelectedSlipRecord(existing);
-      if (existing.status === 'checked_in') {
-        setToastMessage(`ℹ ${child.fullName} is ALREADY checked in for ${activeService?.name || 'this service'}. Pickup Code: ${existing.pickupSecurityCode}`);
-      } else {
-        setToastMessage(`⚠ Duplicate check-in blocked: ${child.fullName} has already attended and been checked out for ${activeService?.name || 'this service'} today.`);
-      }
-      setTimeout(() => setToastMessage(null), 4000);
+    if (currentlyInClass) {
+      setSelectedSlipRecord(currentlyInClass);
+      setToastMessage(
+        `⚠ Duplicate check-in blocked: "${child.fullName}" is ALREADY checked in for ${currentlyInClass.serviceName} today (Code: ${currentlyInClass.pickupSecurityCode}). A child cannot be checked in twice.`
+      );
+      setTimeout(() => setToastMessage(null), 5000);
+      return;
+    }
+
+    // 2. Check if child has already attended and been checked out for this service today
+    const alreadyAttendedThisService = attendance.find(
+      (a) =>
+        (a.childId === child.id || StorageService.normalize(a.childName) === normName) &&
+        a.date === todayStr &&
+        a.serviceId === activeService?.id
+    );
+
+    if (alreadyAttendedThisService) {
+      setSelectedSlipRecord(alreadyAttendedThisService);
+      setToastMessage(
+        `⚠ Duplicate check-in blocked: "${child.fullName}" has already attended and been checked out for ${activeService?.name || 'this service'} today at ${alreadyAttendedThisService.checkOutTime || 'earlier'}. A child cannot be checked in twice.`
+      );
+      setTimeout(() => setToastMessage(null), 5000);
       return;
     }
 
@@ -210,7 +229,7 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Check-Out Child Handler (No child can be checked out twice)
+  // Check-Out Child Handler (Strict: No child can be checked out twice)
   const handleCheckOutRecord = (recordId: string, authorizedPerson: string) => {
     const target = attendance.find((rec) => rec.id === recordId);
     if (!target) {
@@ -220,7 +239,7 @@ export default function App() {
     }
 
     if (target.status === 'checked_out') {
-      setToastMessage(`⚠ Duplicate checkout blocked: ${target.childName} was already checked out at ${target.checkOutTime || 'earlier'} by ${target.checkedOutBy || 'parent'}. Cannot be checked out twice.`);
+      setToastMessage(`⚠ Duplicate checkout blocked: "${target.childName}" was already checked out at ${target.checkOutTime || 'earlier'} by ${target.checkedOutBy || 'parent'}. Cannot be checked out twice.`);
       setTimeout(() => setToastMessage(null), 4500);
       return;
     }
@@ -256,20 +275,26 @@ export default function App() {
     };
     const exists = childrenList.some((c) => c.id === child.id);
 
-    const normName = child.fullName.trim().toLowerCase();
-    const normPhone = child.parentPhone.replace(/\D/g, '');
+    const cleanStr = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cleanDigits = (s: string) => (s || '').replace(/\D/g, '');
 
-    // Check if another child already exists with matching name and parent phone / age
+    const normName = cleanStr(child.fullName);
+    const normPhone = cleanDigits(child.parentPhone);
+
+    // Check if another child already exists with matching name and parent phone / age / parent name
     const duplicate = childrenList.find((c) => {
       if (c.id === child.id) return false;
-      const sameName = c.fullName.trim().toLowerCase() === normName;
-      const samePhone = normPhone && c.parentPhone.replace(/\D/g, '') === normPhone;
-      return sameName && (samePhone || c.age === child.age);
+      const sameName = cleanStr(c.fullName) === normName;
+      const cPhone = cleanDigits(c.parentPhone);
+      const samePhone = normPhone.length >= 6 && cPhone.length >= 6 && (normPhone.slice(-10) === cPhone.slice(-10) || normPhone === cPhone);
+      const sameAge = Number(c.age) === Number(child.age);
+      const sameParent = cleanStr(c.parentName) === cleanStr(child.parentName);
+      return sameName && (samePhone || sameAge || sameParent);
     });
 
     if (duplicate) {
-      setToastMessage(`⚠ Duplicate rejected: "${child.fullName}" is already registered in ${currentBranch.shortName}.`);
-      setTimeout(() => setToastMessage(null), 4000);
+      setToastMessage(`⚠ Duplicate rejected: "${child.fullName}" is already registered in ${currentBranch.shortName}. A child cannot be registered twice.`);
+      setTimeout(() => setToastMessage(null), 4500);
       return;
     }
 
@@ -288,6 +313,13 @@ export default function App() {
   const handleDeleteChild = (childId: string) => {
     const updated = childrenList.filter((c) => c.id !== childId);
     handleUpdateChildren(updated);
+  };
+
+  const handleCleanDuplicates = () => {
+    const res = StorageService.cleanAllDuplicates();
+    setChildrenList(StorageService.getChildren(activeBranchId));
+    setAttendance(StorageService.getAttendance(activeBranchId));
+    return res;
   };
 
   // CSV Import (Strict Deduplication: No child is registered twice)
@@ -422,12 +454,14 @@ export default function App() {
           {currentTab === 'children' && (
             <ChildrenRegistry
               childrenList={childrenList}
+              attendance={attendance}
               departments={departments}
               services={services}
               activeServiceId={activeServiceId}
               onSaveChild={handleSaveChild}
               onDeleteChild={handleDeleteChild}
               onCheckInChild={handleCheckInChild}
+              onViewSlip={(rec) => setSelectedSlipRecord(rec)}
             />
           )}
 
@@ -461,6 +495,7 @@ export default function App() {
               onUpdateServices={handleUpdateServices}
               onUpdateSettings={handleUpdateSettings}
               onResetAllData={handleResetAllData}
+              onCleanDuplicates={handleCleanDuplicates}
             />
           )}
         </main>
