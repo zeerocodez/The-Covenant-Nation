@@ -14,6 +14,7 @@ import {
   INITIAL_ATTENDANCE_HISTORY,
 } from './initialData';
 import { ChurchLogo } from './components/ChurchLogo';
+import { StaffEntranceGate } from './components/StaffEntranceGate';
 import {
   Users,
   UserCheck,
@@ -36,9 +37,25 @@ import {
   ChevronRight,
   UserPlus,
   RefreshCw,
+  LogOut,
 } from 'lucide-react';
 
 export default function App() {
+  // Staff Entrance Gate Authentication State
+  const [isStaffLoggedIn, setIsStaffLoggedIn] = useState<boolean>(() => {
+    return localStorage.getItem('tcn_staff_logged_in') === 'true';
+  });
+
+  const [staffSession, setStaffSession] = useState<{ staffName: string; role: string } | null>(() => {
+    const saved = localStorage.getItem('tcn_staff_info');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return null;
+  });
+
   // Navigation State
   const [activeTab, setActiveTab] = useState<ViewTab>('dashboard');
 
@@ -154,6 +171,21 @@ export default function App() {
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
     }, 3500);
+  };
+
+  // Staff Login / Logout Handlers
+  const handleStaffLoginSuccess = (name: string, role: string) => {
+    localStorage.setItem('tcn_staff_logged_in', 'true');
+    localStorage.setItem('tcn_staff_info', JSON.stringify({ staffName: name, role }));
+    setIsStaffLoggedIn(true);
+    setStaffSession({ staffName: name, role });
+    showNotification(`✓ Welcome to Children Church Portal, ${name}! (${role})`, 'success');
+  };
+
+  const handleStaffLogout = () => {
+    localStorage.removeItem('tcn_staff_logged_in');
+    setIsStaffLoggedIn(false);
+    showNotification('Staff portal locked. Goodbye!', 'info');
   };
 
   // DOB Change and Age Calculation
@@ -440,6 +472,31 @@ export default function App() {
         )
       : [];
 
+  if (!isStaffLoggedIn) {
+    return (
+      <div className="relative">
+        {/* Toast Notification Floating Banner */}
+        <div className="fixed top-5 right-5 z-50 flex flex-col gap-2 max-w-md w-full pointer-events-none">
+          {notifications.map((n) => (
+            <div
+              key={n.id}
+              className={`p-4 rounded-xl shadow-2xl text-white font-medium text-sm flex items-center justify-between pointer-events-auto transition-all transform duration-300 ${
+                n.type === 'success'
+                  ? 'bg-emerald-600 border border-emerald-500'
+                  : n.type === 'error'
+                  ? 'bg-rose-600 border border-rose-500'
+                  : 'bg-indigo-600 border border-indigo-500'
+              }`}
+            >
+              <span>{n.message}</span>
+            </div>
+          ))}
+        </div>
+        <StaffEntranceGate onLoginSuccess={handleStaffLoginSuccess} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 antialiased selection:bg-purple-200">
       {/* Toast Notification Floating Banner */}
@@ -460,7 +517,7 @@ export default function App() {
         ))}
       </div>
 
-      {/* TOP EMERGENCY & CHURCH CONTACT BAR */}
+      {/* TOP EMERGENCY, CHURCH CONTACT & STAFF SESSION BAR */}
       <div className="bg-[#1e1b4b] text-slate-200 text-xs py-2 px-4 border-b border-indigo-950">
         <div className="container mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-4 flex-wrap">
@@ -474,7 +531,7 @@ export default function App() {
               <span>Sundays: 8:00 AM & 10:30 AM</span>
             </span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
             <a
               href="tel:+2348037629110"
               className="flex items-center gap-1.5 text-slate-200 hover:text-amber-300 transition"
@@ -483,13 +540,21 @@ export default function App() {
               <span className="font-semibold">+234 803 762 9110</span>
             </a>
             <span className="text-indigo-400">•</span>
-            <a
-              href="mailto:tcnuyo@gmail.com"
-              className="hidden sm:flex items-center gap-1.5 text-slate-200 hover:text-amber-300 transition"
-            >
-              <Mail className="w-3.5 h-3.5 text-sky-400" />
-              <span>tcnuyo@gmail.com</span>
-            </a>
+            {/* Active Staff Member Indicator & Logout */}
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold">
+                <UserCheck className="w-3 h-3 text-emerald-400" />
+                <span>{staffSession?.staffName || 'Staff Member'} ({staffSession?.role || 'Teacher'})</span>
+              </span>
+              <button
+                onClick={handleStaffLogout}
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border border-rose-500/30 font-semibold transition cursor-pointer"
+                title="Lock Portal / Sign Out"
+              >
+                <LogOut className="w-3 h-3 text-rose-400" />
+                <span>Lock Desk</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
