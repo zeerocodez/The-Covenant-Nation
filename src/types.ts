@@ -98,5 +98,13 @@ export interface ChurchSettings {
   activeBranchId?: string;
 }
 
-export type ActiveTab = 'check-in' | 'check-out' | 'children' | 'reports' | 'admin';
+export type ActiveTab = 'website' | 'check-in' | 'check-out' | 'children' | 'reports' | 'admin';
+
+export interface StaffMemberSession {
+  isLoggedIn: boolean;
+  staffName: string;
+  role: 'Worker' | 'Teacher' | 'Admin' | 'Pastor';
+  branchId: string;
+  loginTime: string;
+}
 

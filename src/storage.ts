@@ -23,6 +23,8 @@ const KEYS = {
   ATTENDANCE_PREFIX: 'tcn_attendance_b_',
   ACTIVE_SERVICE_PREFIX: 'tcn_active_service_b_',
   ADMIN_AUTH: 'tcn_admin_auth_session_v3',
+  STAFF_AUTH: 'tcn_staff_auth_session_v3',
+  STAFF_INFO: 'tcn_staff_info_v3',
 };
 
 function safeGetItem<T>(key: string, defaultValue: T): T {
@@ -313,6 +315,33 @@ export const StorageService = {
     } else {
       localStorage.removeItem(KEYS.ADMIN_AUTH);
     }
+  },
+
+  // ==================== STAFF MEMBER AUTH (PORTAL ENTRANCE) ====================
+  isStaffLoggedIn(): boolean {
+    return localStorage.getItem(KEYS.STAFF_AUTH) === 'true';
+  },
+
+  setStaffLoggedIn(status: boolean, staffName: string = 'Staff Member', role: string = 'Worker'): void {
+    if (status) {
+      localStorage.setItem(KEYS.STAFF_AUTH, 'true');
+      localStorage.setItem(KEYS.STAFF_INFO, JSON.stringify({
+        staffName,
+        role,
+        loginTime: new Date().toISOString(),
+      }));
+    } else {
+      localStorage.removeItem(KEYS.STAFF_AUTH);
+      localStorage.removeItem(KEYS.STAFF_INFO);
+    }
+  },
+
+  getStaffInfo(): { staffName: string; role: string; loginTime: string } {
+    return safeGetItem(KEYS.STAFF_INFO, {
+      staffName: 'Staff Member',
+      role: 'Worker',
+      loginTime: new Date().toISOString(),
+    });
   },
 
   // Reset current branch data

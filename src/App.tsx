@@ -21,6 +21,8 @@ import { SecurityBadgeModal } from './components/SecurityBadgeModal';
 import { ChurchHero } from './components/ChurchHero';
 import { CsvImportModal } from './components/CsvImportModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { StaffEntranceGate } from './components/StaffEntranceGate';
+import { ChildrenChurchWebsite } from './components/ChildrenChurchWebsite';
 import { Sparkles, Church, Heart, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
@@ -31,8 +33,14 @@ export default function App() {
   // Current Active Branch Tenant
   const currentBranch = branches.find((b) => b.id === activeBranchId) || branches[0];
 
+  // Staff Member Entrance Gatekeeper
+  const [isStaffLoggedIn, setIsStaffLoggedIn] = useState<boolean>(() =>
+    StorageService.isStaffLoggedIn()
+  );
+  const [staffInfo, setStaffInfo] = useState(() => StorageService.getStaffInfo());
+
   // Application Data State with LocalStorage backing (Namespaced to active branch)
-  const [currentTab, setCurrentTab] = useState<ActiveTab>('check-in');
+  const [currentTab, setCurrentTab] = useState<ActiveTab>('website');
   const [services, setServices] = useState<ServiceConfig[]>(() => StorageService.getServices(activeBranchId));
   const [departments, setDepartments] = useState<DepartmentConfig[]>(() =>
     StorageService.getDepartments(activeBranchId)
@@ -54,6 +62,22 @@ export default function App() {
   const [isImportCsvModalOpen, setIsImportCsvModalOpen] = useState(false);
   const [selectedSlipRecord, setSelectedSlipRecord] = useState<AttendanceRecord | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Staff Authentication Handlers
+  const handleStaffLoginSuccess = (name: string, role: string) => {
+    StorageService.setStaffLoggedIn(true, name, role);
+    setIsStaffLoggedIn(true);
+    setStaffInfo({ staffName: name, role, loginTime: new Date().toISOString() });
+    setToastMessage(`✓ Welcome to Covenant Kids Ministry, ${name}!`);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleStaffLogout = () => {
+    StorageService.setStaffLoggedIn(false);
+    setIsStaffLoggedIn(false);
+    setIsAdminLoggedIn(false);
+    StorageService.setAdminLoggedIn(false);
+  };
 
   // Handle Switching Branch Parish
   const handleSelectBranch = (newBranchId: string) => {
@@ -381,6 +405,21 @@ export default function App() {
     (a) => a.date === todayStr && a.status === 'checked_in'
   ).length;
 
+  // Gate the entire website behind the Staff Member Login Entrance
+  if (!isStaffLoggedIn) {
+    return (
+      <ErrorBoundary>
+        <StaffEntranceGate
+          branches={branches}
+          currentBranch={currentBranch}
+          onSelectBranch={handleSelectBranch}
+          settings={settings}
+          onLoginSuccess={handleStaffLoginSuccess}
+        />
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800 selection:bg-blue-100 selection:text-blue-900 pb-16 md:pb-0 overflow-x-hidden">
@@ -405,23 +444,39 @@ export default function App() {
           onOpenAdminLogin={() => setIsAdminLoginModalOpen(true)}
           onAdminLogout={handleAdminLogout}
           checkedInCount={activeCheckedInCount}
+          staffInfo={staffInfo}
+          onStaffLogout={handleStaffLogout}
         />
 
         {/* Main Content Area */}
         <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 lg:p-8 space-y-5 sm:space-y-6">
-          {/* Multi-Tenant Official Hero Banner */}
-          <ChurchHero
-            currentBranch={currentBranch}
-            branches={branches}
-            onSelectBranch={handleSelectBranch}
-            selectedDate={todayStr}
-          />
+          {/* Operational Church Hero Banner (Shown on Attendance desks) */}
+          {currentTab !== 'website' && (
+            <ChurchHero
+              currentBranch={currentBranch}
+              branches={branches}
+              onSelectBranch={handleSelectBranch}
+              selectedDate={todayStr}
+            />
+          )}
 
           {toastMessage && (
             <div className="p-3.5 sm:p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-xs animate-in fade-in">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
               <span>{toastMessage}</span>
             </div>
+          )}
+
+          {currentTab === 'website' && (
+            <ChildrenChurchWebsite
+              currentBranch={currentBranch}
+              branches={branches}
+              departments={departments}
+              services={services}
+              onNavigateTab={(tab) => setCurrentTab(tab)}
+              onSelectBranch={handleSelectBranch}
+              checkedInCount={activeCheckedInCount}
+            />
           )}
 
           {currentTab === 'check-in' && (
