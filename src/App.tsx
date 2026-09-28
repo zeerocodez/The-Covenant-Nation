@@ -12,6 +12,7 @@ import {
   INITIAL_CHILDREN,
   INITIAL_TEACHERS,
   INITIAL_ATTENDANCE_HISTORY,
+  getAssignedClass,
 } from './initialData';
 import { ChurchLogo } from './components/ChurchLogo';
 import { StaffEntranceGate } from './components/StaffEntranceGate';
@@ -132,12 +133,17 @@ export default function App() {
 
   // New Child Registration Form State
   const [newChildName, setNewChildName] = useState('');
-  const [newChildPhone, setNewChildPhone] = useState('');
+  const [newChildGuardian1Name, setNewChildGuardian1Name] = useState('');
+  const [newChildGuardian1Phone, setNewChildGuardian1Phone] = useState('');
+  const [newChildGuardian2Name, setNewChildGuardian2Name] = useState('');
+  const [newChildGuardian2Phone, setNewChildGuardian2Phone] = useState('');
   const [newChildBirthDate, setNewChildBirthDate] = useState('');
   const [newChildGender, setNewChildGender] = useState<'Boy' | 'Girl' | ''>('');
   const [newChildAge, setNewChildAge] = useState<number | ''>('');
   const [newChildEmergency, setNewChildEmergency] = useState('');
-  const [newChildNotes, setNewChildNotes] = useState('');
+  const [newChildAllergies, setNewChildAllergies] = useState('');
+  const [newChildMedicalNotes, setNewChildMedicalNotes] = useState('');
+  const [newChildAddress, setNewChildAddress] = useState('');
 
   // New Teacher Form State
   const [newTeacherName, setNewTeacherName] = useState('');
@@ -208,36 +214,52 @@ export default function App() {
   // Register Child
   const handleRegisterChild = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newChildName.trim() || !newChildPhone.trim() || !newChildBirthDate || !newChildGender) {
+    if (!newChildName.trim() || !newChildGuardian1Name.trim() || !newChildGuardian1Phone.trim() || !newChildBirthDate || !newChildGender) {
       showNotification('Please fill in all required fields marked with *', 'error');
       return;
     }
 
     const calculatedAge = typeof newChildAge === 'number' ? newChildAge : 0;
+    const childIdBase = children.length + 1;
+    const newChildIdStr = `TCN-KID-${String(childIdBase).padStart(4, '0')}`;
+    
     const newChild: Child = {
       id: Date.now(),
+      childId: newChildIdStr,
       name: newChildName.trim(),
-      parentPhone: newChildPhone.trim(),
+      guardian1Name: newChildGuardian1Name.trim(),
+      guardian1Phone: newChildGuardian1Phone.trim(),
+      guardian2Name: newChildGuardian2Name.trim(),
+      guardian2Phone: newChildGuardian2Phone.trim(),
       birthDate: newChildBirthDate,
       age: calculatedAge,
       gender: newChildGender as 'Boy' | 'Girl',
+      assignedClass: getAssignedClass(calculatedAge),
+      allergies: newChildAllergies.trim(),
+      medicalNotes: newChildMedicalNotes.trim(),
+      address: newChildAddress.trim(),
       emergencyContact: newChildEmergency.trim(),
-      specialNotes: newChildNotes.trim(),
       registrationDate: new Date().toISOString().split('T')[0],
+      consecutiveAbsences: 0,
     };
 
     setChildren((prev) => [newChild, ...prev]);
 
     // Reset Form
     setNewChildName('');
-    setNewChildPhone('');
+    setNewChildGuardian1Name('');
+    setNewChildGuardian1Phone('');
+    setNewChildGuardian2Name('');
+    setNewChildGuardian2Phone('');
     setNewChildBirthDate('');
     setNewChildGender('');
     setNewChildAge('');
     setNewChildEmergency('');
-    setNewChildNotes('');
+    setNewChildAllergies('');
+    setNewChildMedicalNotes('');
+    setNewChildAddress('');
 
-    showNotification(`${newChild.name} registered successfully! 🌟`, 'success');
+    showNotification(`${newChild.name} registered successfully as ${newChild.childId}! 🌟`, 'success');
     setActiveTab('dashboard');
   };
 
@@ -247,12 +269,16 @@ export default function App() {
     if (child && !checkedInChildren.some((c) => c.id === childId)) {
       const now = new Date();
       const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const nextTagNumber = String(checkedInChildren.length + 1).padStart(3, '0');
+      const pickupCode = Math.floor(1000 + Math.random() * 9000).toString(); // 4 digit code
       const record: CheckedInChild = {
         ...child,
         checkInTime: timeStr,
+        sundayTagNumber: nextTagNumber,
+        guardianPickupCode: pickupCode,
       };
       setCheckedInChildren((prev) => [record, ...prev]);
-      showNotification(`${child.name} checked in successfully! 🎉`, 'success');
+      showNotification(`${child.name} checked in! Tag: ${nextTagNumber}, Code: ${pickupCode} 🎉`, 'success');
     }
   };
 
@@ -320,15 +346,24 @@ export default function App() {
       const full = children.find((orig) => orig.id === c.id);
       return {
         id: c.id,
+        childId: full?.childId || c.childId,
         name: c.name,
         gender: (full?.gender || c.gender || 'Boy') as 'Boy' | 'Girl',
         age: c.age,
+        assignedClass: full?.assignedClass || c.assignedClass || 'UNASSIGNED',
       };
     });
 
     const total = todayAttendees.length;
     const boys = todayAttendees.filter((c) => c.gender === 'Boy').length;
     const girls = todayAttendees.filter((c) => c.gender === 'Girl').length;
+    const kingdomTots = todayAttendees.filter((c) => c.assignedClass === 'KINGDOM TOTS').length;
+    const kingdomGiants = todayAttendees.filter((c) => c.assignedClass === 'KINGDOM GIANTS').length;
+    const gideonForce = todayAttendees.filter((c) => c.assignedClass === 'GIDEON FORCE').length;
+    
+    // Simplistic calculation for demo purposes:
+    const firstTimeChildren = 0; 
+    const returningChildren = total;
 
     if (total === 0) {
       showNotification('No children currently checked in to record attendance! ⚠️', 'error');
@@ -340,11 +375,16 @@ export default function App() {
       total,
       boys,
       girls,
+      kingdomTots,
+      kingdomGiants,
+      gideonForce,
+      firstTimeChildren,
+      returningChildren,
       attendees: todayAttendees,
     };
 
     setAttendanceHistory((prev) => [newRecord, ...prev]);
-    showNotification(`Attendance recorded: ${total} children (${boys} boys, ${girls} girls) 📊`, 'success');
+    showNotification(`Attendance recorded: ${total} children (${kingdomTots} Tots, ${kingdomGiants} Giants, ${gideonForce} Force) 📊`, 'success');
   };
 
   // Export Attendance CSV
@@ -436,6 +476,9 @@ export default function App() {
   const todayTotal = todayCheckedInWithGender.length;
   const todayBoys = todayCheckedInWithGender.filter((c) => c.gender === 'Boy');
   const todayGirls = todayCheckedInWithGender.filter((c) => c.gender === 'Girl');
+  const todayKingdomTots = todayCheckedInWithGender.filter((c) => c.assignedClass === 'KINGDOM TOTS');
+  const todayKingdomGiants = todayCheckedInWithGender.filter((c) => c.assignedClass === 'KINGDOM GIANTS');
+  const todayGideonForce = todayCheckedInWithGender.filter((c) => c.assignedClass === 'GIDEON FORCE');
 
   // 4 Weeks Averages
   const fourWeeksAgo = new Date();
@@ -783,6 +826,22 @@ export default function App() {
               </div>
             </div>
 
+            {/* Class Breakdown */}
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="bg-amber-50 rounded-2xl p-5 border-l-4 border-amber-500 shadow-sm">
+                <p className="text-amber-700 text-xs font-bold uppercase tracking-wider mb-1">Kingdom Tots (Ages 1-3)</p>
+                <p className="text-3xl font-black text-amber-600">{todayKingdomTots.length}</p>
+              </div>
+              <div className="bg-emerald-50 rounded-2xl p-5 border-l-4 border-emerald-500 shadow-sm">
+                <p className="text-emerald-700 text-xs font-bold uppercase tracking-wider mb-1">Kingdom Giants (Ages 4-5)</p>
+                <p className="text-3xl font-black text-emerald-600">{todayKingdomGiants.length}</p>
+              </div>
+              <div className="bg-indigo-50 rounded-2xl p-5 border-l-4 border-indigo-500 shadow-sm">
+                <p className="text-indigo-700 text-xs font-bold uppercase tracking-wider mb-1">Gideon Force (Ages 6-7)</p>
+                <p className="text-3xl font-black text-indigo-600">{todayGideonForce.length}</p>
+              </div>
+            </div>
+
             {/* Currently Checked In Section */}
             <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-slate-100">
               <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
@@ -829,14 +888,22 @@ export default function App() {
                         </div>
                         <div>
                           <p className="font-bold text-slate-900 text-base">{child.name}</p>
-                          <p className="text-xs text-slate-600 mt-0.5">
-                            Age {child.age} • Checked in at{' '}
-                            <span className="font-semibold text-emerald-800">{child.checkInTime}</span>
+                          <p className="text-xs text-slate-600 mt-0.5 font-medium">
+                            {child.assignedClass} • Tag: <span className="font-bold text-slate-800">#{child.sundayTagNumber}</span>
                           </p>
-                          {child.specialNotes && (
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Checked in: <span className="font-semibold text-emerald-800">{child.checkInTime}</span> • Pickup Code: <span className="font-bold text-purple-700">{child.guardianPickupCode}</span>
+                          </p>
+                          {child.allergies && (
+                            <p className="text-[11px] text-rose-600 font-bold mt-1 flex items-center gap-1 bg-rose-50 px-2 py-0.5 rounded-full inline-flex">
+                              <AlertTriangle className="w-3 h-3 shrink-0" />
+                              <span>ALLERGY: {child.allergies}</span>
+                            </p>
+                          )}
+                          {child.medicalNotes && !child.allergies && (
                             <p className="text-xs text-amber-700 font-medium mt-1 flex items-center gap-1">
                               <AlertTriangle className="w-3 h-3 shrink-0" />
-                              <span>{child.specialNotes}</span>
+                              <span>{child.medicalNotes}</span>
                             </p>
                           )}
                         </div>
@@ -852,6 +919,41 @@ export default function App() {
                 </div>
               )}
             </div>
+            
+            {/* Follow-Up Required Section */}
+            {(() => {
+              const childrenNeedingFollowUp = children.filter((c) => c.consecutiveAbsences >= 2);
+              if (childrenNeedingFollowUp.length === 0) return null;
+              
+              return (
+                <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 border-l-4 border-rose-500 border-y border-r border-slate-100 mt-8">
+                  <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+                    <h3 className="text-xl font-bold text-slate-800 flex items-center">
+                      <span className="text-2xl mr-2">🚨</span>
+                      Follow-Up Required ({childrenNeedingFollowUp.length})
+                    </h3>
+                    <span className="text-xs font-bold text-rose-600 bg-rose-50 px-3 py-1 rounded-full uppercase tracking-wide">High Priority</span>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    {childrenNeedingFollowUp.map((child) => (
+                      <div key={child.id} className="p-4 bg-rose-50/40 rounded-xl border border-rose-100 flex justify-between items-center shadow-sm">
+                        <div>
+                          <p className="font-bold text-slate-900">{child.name}</p>
+                          <p className="text-xs text-rose-700 font-medium">Missed {child.consecutiveAbsences} consecutive Sundays</p>
+                          <a href={`tel:${child.guardian1Phone}`} className="text-xs text-blue-600 hover:underline flex items-center gap-1 mt-1 font-medium">
+                            <Phone className="w-3 h-3" />
+                            <span>{child.guardian1Name}: {child.guardian1Phone}</span>
+                          </a>
+                        </div>
+                        <button className="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-slate-50 transition shadow-sm cursor-pointer">
+                          Mark Contacted
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -947,20 +1049,26 @@ export default function App() {
                               )}
                             </div>
                             <p className="text-xs text-slate-600 mt-0.5 flex items-center gap-2">
-                              <span>Age {child.age}</span>
+                              <span className="font-semibold">{child.assignedClass}</span>
                               <span>•</span>
                               <a
-                                href={`tel:${child.parentPhone}`}
-                                className="text-blue-600 hover:underline flex items-center gap-1"
+                                href={`tel:${child.guardian1Phone}`}
+                                className="text-blue-600 hover:underline flex items-center gap-1 font-medium"
                               >
                                 <Phone className="w-3 h-3" />
-                                <span>{child.parentPhone}</span>
+                                <span>{child.guardian1Phone}</span>
                               </a>
                             </p>
-                            {child.specialNotes && (
+                            {child.allergies && (
+                              <p className="text-[11px] text-rose-600 font-bold mt-1 flex items-center gap-1 bg-rose-50 px-2 py-0.5 rounded-full inline-flex">
+                                <AlertTriangle className="w-3 h-3 shrink-0" />
+                                <span>ALLERGY: {child.allergies}</span>
+                              </p>
+                            )}
+                            {child.medicalNotes && !child.allergies && (
                               <p className="text-xs text-amber-700 font-medium mt-1 flex items-center gap-1">
                                 <AlertTriangle className="w-3 h-3 shrink-0" />
-                                <span>⚠️ {child.specialNotes}</span>
+                                <span>⚠️ {child.medicalNotes}</span>
                               </p>
                             )}
                           </div>
@@ -1009,30 +1117,77 @@ export default function App() {
               </div>
 
               <form onSubmit={handleRegisterChild} className="space-y-5">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1.5 text-sm">Full Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newChildName}
-                    onChange={(e) => setNewChildName(e.target.value)}
-                    placeholder="e.g. Samuel David Bassey"
-                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-100 focus:outline-none text-slate-800 transition"
-                  />
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1.5 text-sm">Full Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newChildName}
+                      onChange={(e) => setNewChildName(e.target.value)}
+                      placeholder="e.g. Samuel David Bassey"
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-100 focus:outline-none text-slate-800 transition"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1.5 text-sm">Home Address</label>
+                    <input
+                      type="text"
+                      value={newChildAddress}
+                      onChange={(e) => setNewChildAddress(e.target.value)}
+                      placeholder="e.g. 10 Udo Udoma Ave"
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-100 focus:outline-none text-slate-800 transition"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1.5 text-sm">
-                    Parent/Guardian Phone *
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    value={newChildPhone}
-                    onChange={(e) => setNewChildPhone(e.target.value)}
-                    placeholder="e.g. 0803 762 9110"
-                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-100 focus:outline-none text-slate-800 transition"
-                  />
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1.5 text-sm">Parent/Guardian 1 Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newChildGuardian1Name}
+                      onChange={(e) => setNewChildGuardian1Name(e.target.value)}
+                      placeholder="e.g. Mr. Bassey"
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-100 focus:outline-none text-slate-800 transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1.5 text-sm">Parent/Guardian 1 Phone *</label>
+                    <input
+                      type="tel"
+                      required
+                      value={newChildGuardian1Phone}
+                      onChange={(e) => setNewChildGuardian1Phone(e.target.value)}
+                      placeholder="e.g. 0803 762 9110"
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-100 focus:outline-none text-slate-800 transition"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1.5 text-sm">Parent/Guardian 2 Name</label>
+                    <input
+                      type="text"
+                      value={newChildGuardian2Name}
+                      onChange={(e) => setNewChildGuardian2Name(e.target.value)}
+                      placeholder="e.g. Mrs. Bassey"
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-100 focus:outline-none text-slate-800 transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1.5 text-sm">Parent/Guardian 2 Phone</label>
+                    <input
+                      type="tel"
+                      value={newChildGuardian2Phone}
+                      onChange={(e) => setNewChildGuardian2Phone(e.target.value)}
+                      placeholder="e.g. 0812 456 7890"
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-100 focus:outline-none text-slate-800 transition"
+                    />
+                  </div>
                 </div>
 
                 <div className="grid md:grid-cols-3 gap-4">
@@ -1062,12 +1217,12 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 font-bold mb-1.5 text-sm">Age</label>
+                    <label className="block text-slate-700 font-bold mb-1.5 text-sm">Class</label>
                     <input
-                      type="number"
+                      type="text"
                       readOnly
-                      value={newChildAge}
-                      placeholder="Auto"
+                      value={newChildAge !== '' ? getAssignedClass(newChildAge as number) : ''}
+                      placeholder="Auto Assigned"
                       className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-bold cursor-not-allowed"
                     />
                   </div>
@@ -1086,17 +1241,31 @@ export default function App() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1.5 text-sm">
-                    Special Notes (Allergies, Medical, etc.)
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={newChildNotes}
-                    onChange={(e) => setNewChildNotes(e.target.value)}
-                    placeholder="e.g. Asthmatic, allergic to nuts, lactose intolerant, wearing glasses..."
-                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-100 focus:outline-none text-slate-800 transition"
-                  ></textarea>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-rose-600 font-bold mb-1.5 text-sm">
+                      Allergies
+                    </label>
+                    <input
+                      type="text"
+                      value={newChildAllergies}
+                      onChange={(e) => setNewChildAllergies(e.target.value)}
+                      placeholder="e.g. Peanut Allergy"
+                      className="w-full px-4 py-3 border-2 border-rose-200 rounded-xl focus:border-rose-500 focus:ring-4 focus:ring-rose-100 focus:outline-none text-slate-800 transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1.5 text-sm">
+                      Other Medical Notes
+                    </label>
+                    <input
+                      type="text"
+                      value={newChildMedicalNotes}
+                      onChange={(e) => setNewChildMedicalNotes(e.target.value)}
+                      placeholder="e.g. Asthmatic"
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-100 focus:outline-none text-slate-800 transition"
+                    />
+                  </div>
                 </div>
 
                 <button
@@ -1407,6 +1576,9 @@ export default function App() {
                         <th className="px-5 py-3.5">Total</th>
                         <th className="px-5 py-3.5 text-blue-600">Boys</th>
                         <th className="px-5 py-3.5 text-pink-600">Girls</th>
+                        <th className="px-5 py-3.5 text-amber-600">Tots (1-3)</th>
+                        <th className="px-5 py-3.5 text-emerald-600">Giants (4-5)</th>
+                        <th className="px-5 py-3.5 text-indigo-600">Force (6-7)</th>
                         <th className="px-5 py-3.5">Percentage</th>
                       </tr>
                     </thead>
@@ -1431,6 +1603,9 @@ export default function App() {
                               </td>
                               <td className="px-5 py-3.5 font-bold text-blue-600">{record.boys}</td>
                               <td className="px-5 py-3.5 font-bold text-pink-600">{record.girls}</td>
+                              <td className="px-5 py-3.5 font-bold text-amber-600">{record.kingdomTots || 0}</td>
+                              <td className="px-5 py-3.5 font-bold text-emerald-600">{record.kingdomGiants || 0}</td>
+                              <td className="px-5 py-3.5 font-bold text-indigo-600">{record.gideonForce || 0}</td>
                               <td className="px-5 py-3.5 font-semibold text-slate-700">
                                 <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full text-xs font-bold">
                                   {percentage}%
